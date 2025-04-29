@@ -1,0 +1,15 @@
+[project]
+name = "py-mail-mcp"
+version = "0.1.0"
+description = "Email MCP server with support for IMAP, SMTP, and common email operations"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[cli]>=1.6.0",
+    "python-dotenv>=1.0.0",
+    "asyncio>=3.4.3",
+    "aiosmtplib>=2.0.2",
+    "aioimaplib>=1.0.1",
+    "email-validator>=2.1.0",
+    "python-multipart>=0.0.6"
+]
