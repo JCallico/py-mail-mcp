@@ -27,6 +27,7 @@ import json
 import os
 import email
 import sys
+import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -40,28 +41,66 @@ import aiosmtplib
 from aioimaplib import aioimaplib
 from email_validator import validate_email, EmailNotValidError
 
+# Set up logging to file using a more robust approach
+# Get the directory of the current script file
+script_dir = os.path.dirname(os.path.abspath(__file__))
+# Define log file path using the script name
+log_file = os.path.join(script_dir, "server-email.log")
+
+# Create a logger
+logger = logging.getLogger("email_server")
+logger.setLevel(logging.INFO)
+
+# Create file handler
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+
+# Create formatter and add it to the handler
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+file_handler.setFormatter(formatter)
+
+# Add the handler to the logger
+logger.addHandler(file_handler)
+
+# Prevent log messages from being passed to the root logger
+logger.propagate = False
+
+# Redirect stderr to the log file
+class StdErrRedirector:
+    def write(self, message):
+        if message.strip():  # Avoid empty messages
+            logger.error(message.strip())
+    
+    def flush(self):
+        pass
+
+sys.stderr = StdErrRedirector()
+
+# Log startup message
+logger.info(f"Email server starting up. Log file created at: {log_file}")
+
 # Try to find and load .env file
 env_path = find_dotenv(usecwd=True)
 if env_path:
-    print(f"Found .env file at: {env_path}")
+    logger.info(f"Found .env file at: {env_path}")
     # Load env vars and make them available to child processes
     load_dotenv(env_path)
     for key, value in os.environ.items():
         if key.startswith(('EMAIL_', 'IMAP_', 'SMTP_')):
-            print(f"Setting environment variable: {key}")
+            logger.info(f"Setting environment variable: {key}")
             os.environ[key] = value
 else:
-    print("Warning: No .env file found")
+    logger.warning("No .env file found")
 
-# Print current working directory and environment variables for debugging
-print(f"Current working directory: {os.getcwd()}")
-print("Environment variables:")
-print(f"EMAIL_USER: {os.getenv('EMAIL_USER', 'Not set')}")
-print(f"IMAP_HOST: {os.getenv('IMAP_HOST', 'Not set')}")
-print(f"SMTP_HOST: {os.getenv('SMTP_HOST', 'Not set')}")
+# Log current working directory and environment variables for debugging
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info("Environment variables:")
+logger.info(f"EMAIL_USER: {os.getenv('EMAIL_USER', 'Not set')}")
+logger.info(f"IMAP_HOST: {os.getenv('IMAP_HOST', 'Not set')}")
+logger.info(f"SMTP_HOST: {os.getenv('SMTP_HOST', 'Not set')}")
 
 server_url = os.getenv("SERVER_URL", "http://127.0.0.1:6274")
-print(f"Using server URL: {server_url}")
+logger.info(f"Using server URL: {server_url}")
 
 # Initialize MCP server
 mcp = FastMCP("Email", server_url=server_url)
@@ -85,7 +124,7 @@ async def ensure_imap_connection():
             if not all([imap_host, email_user, email_pass]):
                 raise ValueError("Missing IMAP credentials in environment variables")
             
-            print(f"Connecting to IMAP server {imap_host}:{imap_port}")
+            logger.info(f"Connecting to IMAP server {imap_host}:{imap_port}")
             
             # If client exists but is not authenticated, close it first
             if imap_client is not None:
@@ -100,16 +139,16 @@ async def ensure_imap_connection():
             await imap_client.wait_hello_from_server()
             
             # Authenticate
-            print("Authenticating with IMAP server...")
+            logger.info("Authenticating with IMAP server...")
             login_result = await imap_client.login(email_user, email_pass)
 
             if imap_client.protocol.state != "AUTH":
                 raise ValueError(f"Failed to authenticate with IMAP server: {login_result}")      
             
-            print("Successfully authenticated with IMAP server")
+            logger.info("Successfully authenticated with IMAP server")
     
     except Exception as e:
-        print(f"IMAP connection error: {str(e)}", file=sys.stderr)
+        logger.error(f"IMAP connection error: {str(e)}")
         # Reset the client on error so we can try to reconnect
         if imap_client is not None:
             try:
@@ -133,7 +172,7 @@ async def ensure_smtp_connection():
             if not all([smtp_host, email_user, email_pass]):
                 raise ValueError("Missing SMTP credentials in environment variables")
             
-            print(f"Connecting to SMTP server {smtp_host}:{smtp_port}")
+            logger.info(f"Connecting to SMTP server {smtp_host}:{smtp_port}")
             
             # Create new connection
             if smtp_client:
@@ -150,13 +189,13 @@ async def ensure_smtp_connection():
             )
             
             # Connect and authenticate
-            print("Establishing connection and authenticating...")
+            logger.info("Establishing connection and authenticating...")
             await smtp_client.connect()
             await smtp_client.login(email_user, email_pass)
-            print("Successfully connected and authenticated with SMTP server")
+            logger.info("Successfully connected and authenticated with SMTP server")
             
     except Exception as e:
-        print(f"SMTP connection error: {str(e)}", file=sys.stderr)
+        logger.error(f"SMTP connection error: {str(e)}")
         # Reset client on error
         if smtp_client:
             try:
@@ -170,18 +209,33 @@ async def ensure_smtp_connection():
 async def list_mailboxes() -> str:
     """List all mailboxes/folders in the email account."""
     await ensure_imap_connection()
-    # Use '' as reference name (root level) and '*' to match all mailboxes
-    response = await imap_client.list('', '*')
-    folders = []
-    
-    for line in response.lines:
-        if line:
-            parts = line.decode().split('" "')
-            if len(parts) >= 2:
-                folder_name = parts[1].strip('"')
+
+    try:
+        # Use "\"\"" as reference name and "\"*\"" to match all mailboxes (escaped double-quoted strings)
+        logger.info("Sending LIST command to IMAP server...")
+        list_response = await imap_client.list("\"\"", "*")
+
+        if list_response.result != "OK":
+            raise ValueError(f"Failed to list folders: {list_response.result} - {list_response.lines}")
+
+        # Parse folder names from response
+        folders = []
+        for line in list_response.lines:
+            if isinstance(line, bytes):
+                line = line.decode("utf-8")
+            logger.info(f"Processing line: {line}")  # Debugging output
+            # Extract folder name (typically last part in quotes)
+            parts = line.split(' "')
+            if len(parts) > 1:
+                folder_name = parts[-1].strip('"')
                 folders.append(folder_name)
-    
-    return json.dumps(folders)
+
+        logger.info(f"Found folders: {folders}")
+        return json.dumps(folders)
+
+    except Exception as e:
+        logger.error(f"Error listing mailboxes: {str(e)}")
+        return json.dumps({"error": str(e)})
 
 @mcp.resource("email://mailbox/create/{name}")
 async def create_mailbox(name: str) -> str:
@@ -203,14 +257,14 @@ async def list_messages(folder: str, limit: int = 50) -> str:
     try:
         await ensure_imap_connection()
         
-        print(f"Selecting folder: {folder}")
+        logger.info(f"Selecting folder: {folder}")
         select_response = await imap_client.select(folder)
         if select_response.result != "OK":
             return json.dumps({
                 "error": f"Failed to select folder {folder}: {select_response.lines[0].decode()}"
             })
         
-        print(f"Searching for messages...")
+        logger.info(f"Searching for messages...")
         search_response = await imap_client.search("ALL")
         if search_response.result != "OK":
             return json.dumps({
@@ -232,11 +286,11 @@ async def list_messages(folder: str, limit: int = 50) -> str:
                     "to": email_data["to"]
                 })
         
-        print(f"Found {len(messages)} messages")
+        logger.info(f"Found {len(messages)} messages")
         return json.dumps(messages)
         
     except Exception as e:
-        print(f"Error listing messages: {str(e)}", file=sys.stderr)
+        logger.error(f"Error listing messages: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.resource("email://messages/search/{folder}/{query}")
@@ -245,14 +299,14 @@ async def search_messages(folder: str, query: str) -> str:
     try:
         await ensure_imap_connection()
         
-        print(f"Selecting folder: {folder}")
+        logger.info(f"Selecting folder: {folder}")
         select_response = await imap_client.select(folder)
         if select_response.result != "OK":
             return json.dumps({
                 "error": f"Failed to select folder {folder}: {select_response.lines[0].decode()}"
             })
         
-        print(f"Searching for messages matching: {query}")
+        logger.info(f"Searching for messages matching: {query}")
         search_response = await imap_client.search(f'TEXT "{query}"')
         if search_response.result != "OK":
             return json.dumps({
@@ -274,11 +328,11 @@ async def search_messages(folder: str, query: str) -> str:
                     "to": email_data["to"]
                 })
         
-        print(f"Found {len(messages)} matching messages")
+        logger.info(f"Found {len(messages)} matching messages")
         return json.dumps(messages)
         
     except Exception as e:
-        print(f"Error searching messages: {str(e)}", file=sys.stderr)
+        logger.error(f"Error searching messages: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.resource("email://messages/get/{folder}/{message_id}")
@@ -445,40 +499,40 @@ async def mark_message(folder: str, message_id: str, flag: str) -> str:
 async def list_folders() -> str:
     """List all folders in the email account."""
     try:
-        print("Executing list_folders command...")
+        logger.info("Executing list_folders command...")
         return await list_mailboxes()
     except Exception as e:
-        print(f"Error executing list_folders: {str(e)}", file=sys.stderr)
+        logger.error(f"Error executing list_folders: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def create_folder(name: str) -> str:
     """Create a new folder in the email account."""
     try:
-        print(f"Creating folder: {name}")
+        logger.info(f"Creating folder: {name}")
         return await create_mailbox(name)
     except Exception as e:
-        print(f"Error creating folder: {str(e)}", file=sys.stderr)
+        logger.error(f"Error creating folder: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def delete_folder(name: str) -> str:
     """Delete a folder from the email account."""
     try:
-        print(f"Deleting folder: {name}")
+        logger.info(f"Deleting folder: {name}")
         return await delete_mailbox(name)
     except Exception as e:
-        print(f"Error deleting folder: {str(e)}", file=sys.stderr)
+        logger.error(f"Error deleting folder: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def search_email(folder: str, query: str) -> str:
     """Search for emails in a specific folder."""
     try:
-        print(f"Searching in folder '{folder}' for: {query}")
+        logger.info(f"Searching in folder '{folder}' for: {query}")
         return await search_messages(folder, query)
     except Exception as e:
-        print(f"Error searching emails: {str(e)}", file=sys.stderr)
+        logger.error(f"Error searching emails: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
@@ -488,8 +542,8 @@ async def send_email(to: str, subject: str, body: str = "",
                     attachments: Optional[List[Dict]] = None) -> str:
     """Send an email with optional CC, BCC, and attachments."""
     try:
-        print(f"Sending email to: {to}")
-        print(f"Subject: {subject}")
+        logger.info(f"Sending email to: {to}")
+        logger.info(f"Subject: {subject}")
         
         # Handle empty strings for optional parameters
         cc = None if not cc or cc in ["", "null"] else cc
@@ -542,7 +596,7 @@ async def send_email(to: str, subject: str, body: str = "",
             "message": "Email sent successfully"
         })
     except Exception as e:
-        print(f"Error sending email: {str(e)}", file=sys.stderr)
+        logger.error(f"Error sending email: {str(e)}")
         return json.dumps({
             "error": str(e)
         })
@@ -551,57 +605,57 @@ async def send_email(to: str, subject: str, body: str = "",
 async def read_email(folder: str, message_id: str) -> str:
     """Read a specific email's content."""
     try:
-        print(f"Reading email {message_id} from folder: {folder}")
+        logger.info(f"Reading email {message_id} from folder: {folder}")
         return await get_message(folder, message_id)
     except Exception as e:
-        print(f"Error reading email: {str(e)}", file=sys.stderr)
+        logger.error(f"Error reading email: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def move_email(folder: str, message_id: str, target_folder: str) -> str:
     """Move an email to a different folder."""
     try:
-        print(f"Moving email {message_id} from {folder} to {target_folder}")
+        logger.info(f"Moving email {message_id} from {folder} to {target_folder}")
         return await move_message(folder, message_id, target_folder)
     except Exception as e:
-        print(f"Error moving email: {str(e)}", file=sys.stderr)
+        logger.error(f"Error moving email: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def delete_email(folder: str, message_id: str) -> str:
     """Delete an email."""
     try:
-        print(f"Deleting email {message_id} from folder: {folder}")
+        logger.info(f"Deleting email {message_id} from folder: {folder}")
         return await delete_message(folder, message_id)
     except Exception as e:
-        print(f"Error deleting email: {str(e)}", file=sys.stderr)
+        logger.error(f"Error deleting email: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def mark_email(folder: str, message_id: str, flag: str) -> str:
     """Mark an email with a flag (read, unread, flagged, unflagged)."""
     try:
-        print(f"Marking email {message_id} as {flag}")
+        logger.info(f"Marking email {message_id} as {flag}")
         return await mark_message(folder, message_id, flag)
     except Exception as e:
-        print(f"Error marking email: {str(e)}", file=sys.stderr)
+        logger.error(f"Error marking email: {str(e)}")
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
 async def list_recent_emails(folder: str, limit: int = 50) -> str:
     """List recent emails in a folder."""
     try:
-        print(f"Listing {limit} recent emails from folder: {folder}")
+        logger.info(f"Listing {limit} recent emails from folder: {folder}")
         return await list_messages(folder, limit)
     except Exception as e:
-        print(f"Error listing emails: {str(e)}", file=sys.stderr)
+        logger.error(f"Error listing emails: {str(e)}")
         return json.dumps({"error": str(e)})
 
 if __name__ == "__main__":
-    print("Starting Email MCP Server...")
+    logger.info("Starting Email MCP Server...")
     
     try:
         mcp.run()
     except Exception as e:
-        print(f"Server error: {str(e)}", file=sys.stderr)
+        logger.error(f"Server error: {str(e)}")
         raise

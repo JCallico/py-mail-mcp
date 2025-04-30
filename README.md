@@ -155,6 +155,18 @@ Location:
 - `.env.template`: Template for email configuration
 - `.env`: Environment variables (not tracked in git)
 - `.python-version`: Python version requirement
+- `email_server.log`: Log file containing server operations and errors
+
+## Logging
+
+The server now implements a comprehensive logging system:
+
+- All operations and errors are logged to `email_server.log` in the script directory
+- Console output is suppressed for silent operation
+- Detailed logging of IMAP/SMTP operations for troubleshooting
+- Error messages with stack traces for debugging
+- Timestamp and log level categorization
+- Custom error redirection from stderr to log file
 
 ## Error Handling
 
@@ -172,6 +184,13 @@ The server includes comprehensive error handling for:
 - Environment variable configuration for credentials
 - Input validation
 - Secure attachment handling
+
+## Recent Changes
+
+- **04/30/2025**: Improved IMAP mailbox listing with proper command syntax for Gmail compatibility
+- **04/30/2025**: Added comprehensive logging system with output redirection to `email_server.log`
+- **04/30/2025**: Fixed error handling for IMAP connection and authentication
+- **04/30/2025**: Optimized parsing of LIST command responses
 
 ## License
 
