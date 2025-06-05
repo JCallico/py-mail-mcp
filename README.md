@@ -1,4 +1,4 @@
-# Mail MCP Server
+# Email MCP Server
 
 A Model Context Protocol (MCP) server implementation that provides programmatic access to email functionality through IMAP and SMTP protocols. This server enables seamless email operations with comprehensive support for mailbox management, message handling, and email composition.
 
@@ -43,7 +43,28 @@ cd py-mail-mcp
 uv pip install -r requirements.txt
 ```
 
+Or using pip:
+```bash
+pip install -r requirements.txt
+```
+
 ## Configuration
+
+### Option 1: Interactive Configuration (Recommended)
+
+Run the interactive configuration script to set up your email provider:
+
+```bash
+python configure_email.py
+```
+
+This script supports:
+- **Gmail** (with App Password setup instructions)
+- **Outlook/Hotmail** (with security configuration guidance)
+- **Yahoo Mail** (with 2FA and App Password setup)
+- **Custom providers** (manual IMAP/SMTP configuration)
+
+### Option 2: Manual Configuration
 
 1. Copy the template environment file:
 ```bash
@@ -65,137 +86,189 @@ SMTP_HOST=smtp.example.com
 SMTP_PORT=587  # Default port for SMTP with TLS
 ```
 
-Common email provider settings:
+### Pre-configured Provider Settings
 
-Gmail:
+**Gmail:**
 - IMAP: imap.gmail.com:993
 - SMTP: smtp.gmail.com:587
 - Requires App Password if 2FA is enabled
+- Generate at: https://myaccount.google.com/apppasswords
 
-Outlook:
-- IMAP: outlook.office365.com:993
-- SMTP: smtp.office365.com:587
+**Outlook/Hotmail:**
+- IMAP: outlook.office365.com:993 (or imap-mail.outlook.com:993)
+- SMTP: smtp.office365.com:587 (or smtp-mail.outlook.com:587)
+- May require App Password for 2FA accounts
 
-Yahoo Mail:
+**Yahoo Mail:**
 - IMAP: imap.mail.yahoo.com:993
 - SMTP: smtp.mail.yahoo.com:587
+- Requires App Password for 2FA accounts
 
-Note: For providers that use 2FA, you'll need to generate an App Password.
+## Usage
 
-## Claude Desktop Configuration
+### Starting the Server
 
-Configure the Mail MCP server in Claude Desktop:
+Start the MCP server directly:
+```bash
+mcp run server-email.py
+```
+
+Or run the main entry point to see available operations:
+```bash
+python main.py
+```
+
+### Claude Desktop Configuration
+
+Configure the Email MCP server in Claude Desktop by adding this to your `claude_desktop_config.json`:
 
 ```json
 {
-  "Mail": {
-    "command": "/path/to/uv",
-    "args": [
-      "pip",
-      "install",
-      "--system",
-      "mcp[cli]>=1.6.0",
-      "aiosmtplib>=2.0.2",
-      "aioimaplib>=1.0.1",
-      "email-validator>=2.1.0",
-      "python-multipart>=0.0.6",
-      "python-dotenv>=1.0.0",
-      "--",
-      "python",
-      "-m",
-      "mcp",
-      "run",
-      "/path/to/server-email.py"
-    ],
-    "env": {
-      "SERVER_URL": "http://127.0.0.1:8001",
-      "PYTHONPATH": "/path/to/py-mail-mcp"
+  "mcpServers": {
+    "email": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/py-mail-mcp/",
+        "--with",
+        "mcp[cli]",
+        "mcp",
+        "run",
+        "/path/to/py-mail-mcp/server-email.py"
+      ],
+      "env": {
+        "SERVER_URL": "http://127.0.0.1:8001"
+      }      
     }
   }
 }
 ```
 
-Location:
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json`
+**Configuration file locations:**
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
 ## Available Tools
 
-### Mailbox Tools
-- `list_folders()` - List all mail folders
-- `create_folder(name)` - Create new folder
-- `delete_folder(name)` - Delete folder
+### Mailbox Management Tools
+- **`list_folders()`** - List all email folders/mailboxes
+- **`create_folder(name)`** - Create a new folder
+- **`delete_folder(name)`** - Delete an existing folder
 
-### Message Tools
-- `list_recent_emails(folder, limit=50)` - List recent emails
-- `search_email(folder, query)` - Search for emails
-- `read_email(folder, message_id)` - Get email content
-- `send_email(to, subject, body, cc=None, bcc=None, attachments=None)` - Send email
-- `move_email(folder, message_id, target_folder)` - Move email
-- `delete_email(folder, message_id)` - Delete email
-- `mark_email(folder, message_id, flag)` - Mark email (read/unread/flagged)
+### Message Management Tools
+- **`list_recent_emails(folder, limit=50)`** - List recent emails in a folder
+- **`search_email(folder, query)`** - Search for emails containing specific text
+- **`read_email(folder, message_id)`** - Get full email content including headers and body
+- **`send_email(to, subject, body, cc=None, bcc=None, attachments=None)`** - Send new email
+- **`move_email(folder, message_id, target_folder)`** - Move email between folders
+- **`delete_email(folder, message_id)`** - Delete an email permanently
+- **`mark_email(folder, message_id, flag)`** - Mark email as read/unread/flagged/unflagged
 
 ## Dependencies
 
-- Python >= 3.13
-- mcp[cli] >= 1.6.0
-- python-dotenv >= 1.0.0
-- asyncio >= 3.4.3
-- aiosmtplib >= 2.0.2
-- aioimaplib >= 1.0.1
-- email-validator >= 2.1.0
-- python-multipart >= 0.0.6
+All dependencies are managed through `pyproject.toml` and `requirements.txt`:
+
+- **Python** >= 3.13
+- **mcp[cli]** >= 1.6.0 - Model Context Protocol framework
+- **python-dotenv** >= 1.0.0 - Environment variable management
+- **asyncio** >= 3.4.3 - Asynchronous I/O support
+- **aiosmtplib** >= 2.0.2 - Async SMTP client
+- **aioimaplib** >= 1.0.1 - Async IMAP client
+- **email-validator** >= 2.1.0 - Email address validation
+- **python-multipart** >= 0.0.6 - Multipart form data handling
 
 ## Project Structure
 
-- `server-email.py`: Main MCP server implementation
-- `main.py`: Package entry point with usage examples
-- `pyproject.toml`: Project dependencies and configuration
-- `.env.template`: Template for email configuration
-- `.env`: Environment variables (not tracked in git)
-- `.python-version`: Python version requirement
-- `email_server.log`: Log file containing server operations and errors
+```
+py-mail-mcp/
+├── server-email.py         # Main MCP server implementation
+├── main.py                 # Package entry point with usage examples
+├── configure_email.py      # Interactive email configuration script
+├── pyproject.toml         # Project dependencies and metadata
+├── requirements.txt       # Pip-compatible dependencies list
+├── README.md              # This documentation file
+├── .env.template          # Template for email configuration
+├── .env                   # Active environment variables (gitignored)
+├── .python-version        # Python version requirement (3.13)
+├── .gitignore            # Git ignore patterns
+├── uv.lock               # UV package manager lock file
+└── server-email.log      # Runtime log file (auto-generated)
+```
 
-## Logging
+## Logging & Monitoring
 
-The server now implements a comprehensive logging system:
+The server implements comprehensive logging for debugging and monitoring:
 
-- All operations and errors are logged to `email_server.log` in the script directory
-- Console output is suppressed for silent operation
-- Detailed logging of IMAP/SMTP operations for troubleshooting
-- Error messages with stack traces for debugging
-- Timestamp and log level categorization
-- Custom error redirection from stderr to log file
+- **Log File**: `server-email.log` (auto-created in project directory)
+- **Log Contents**: 
+  - Connection attempts and authentication status
+  - IMAP/SMTP operations and responses
+  - Error messages with detailed stack traces
+  - Performance and timing information
+- **Log Format**: Timestamped entries with log levels (INFO, ERROR, WARNING)
+- **Error Handling**: Automatic stderr redirection to log file for silent operation
 
-## Error Handling
+## Error Handling & Security
 
-The server includes comprehensive error handling for:
-- Email address validation
-- Connection errors
-- Authentication errors
-- Invalid mailbox/message operations
-- Attachment handling
+### Robust Error Handling
+- Email address validation with detailed error messages
+- Graceful handling of connection timeouts and network issues
+- Authentication failure detection and recovery
+- Invalid mailbox/message operation protection
+- Safe attachment handling with file validation
 
-## Security
+### Security Features
+- **Encrypted Connections**: SSL/TLS for all IMAP/SMTP communications
+- **Credential Protection**: Environment-based configuration (no hardcoded secrets)
+- **App Password Support**: Compatible with 2FA-enabled accounts
+- **Input Validation**: Comprehensive validation of all user inputs
+- **File Permissions**: Automatic `.env` file permission restriction (600)
 
-- Uses SSL/TLS for secure connections
-- Supports app-specific passwords for 2FA
-- Environment variable configuration for credentials
-- Input validation
-- Secure attachment handling
+## Recent Updates
 
-## Recent Changes
+- **Enhanced Provider Support**: Added `configure_email.py` with guided setup for major email providers
+- **Improved Gmail Compatibility**: Fixed IMAP mailbox listing with proper command syntax
+- **Comprehensive Logging**: Added detailed logging system with `server-email.log` output
+- **Better Error Handling**: Enhanced connection management and authentication error recovery
+- **Multiple Environment Configs**: Support for provider-specific `.env` files
+- **UV Package Manager**: Added `uv.lock` for reproducible dependency management
 
-- **04/30/2025**: Improved IMAP mailbox listing with proper command syntax for Gmail compatibility
-- **04/30/2025**: Added comprehensive logging system with output redirection to `email_server.log`
-- **04/30/2025**: Fixed error handling for IMAP connection and authentication
-- **04/30/2025**: Optimized parsing of LIST command responses
+## Troubleshooting
+
+### Common Issues
+
+1. **Authentication Failures**:
+   - Ensure 2FA is enabled and App Password is generated
+   - Verify credentials in `.env` file
+   - Check `server-email.log` for detailed error messages
+
+2. **Connection Timeouts**:
+   - Verify IMAP/SMTP server addresses and ports
+   - Check firewall and network connectivity
+   - Review provider-specific security settings
+
+3. **Folder/Mailbox Issues**:
+   - Different providers use different folder naming conventions
+   - Gmail uses labels, others use traditional folders
+   - Check folder names with `list_folders()` tool
+
+### Debug Mode
+
+Enable detailed logging by checking the `server-email.log` file after operations. All IMAP commands, responses, and errors are logged with timestamps.
 
 ## License
 
-MIT License
+MIT License - see LICENSE file for details.
 
-Copyright (c) 2025
+## Contributing
 
-See LICENSE file for details.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Update documentation
+6. Submit a pull request
+
+For questions or issues, please check the `server-email.log` file first, then open an issue with relevant log excerpts.
