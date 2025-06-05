@@ -189,6 +189,7 @@ py-mail-mcp/
 ├── pyproject.toml         # Project dependencies and metadata
 ├── requirements.txt       # Pip-compatible dependencies list
 ├── README.md              # This documentation file
+├── LICENSE.md             # MIT License file
 ├── .env.template          # Template for email configuration
 ├── .env                   # Active environment variables (gitignored)
 ├── .python-version        # Python version requirement (3.13)
@@ -260,7 +261,7 @@ Enable detailed logging by checking the `server-email.log` file after operations
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE.md](LICENSE.md) for details.
 
 ## Contributing
 
